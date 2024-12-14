@@ -1,7 +1,7 @@
 # sample-browser
 sound-similarity sample browser via clap
 
-currently windows-only
+currently windows-only: the code will run on other OSs, but the install and run scripts will need to be rewritten
 
 ### Install:
 
