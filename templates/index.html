@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html class="dark">
+<head>
+    <title>Sound Similarity Browser</title>
+    <style>
+        :root {
+            --primary: #60a5fa;
+            --primary-hover: #3b82f6;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --text-light: #94a3b8;
+            --input-bg: #0f172a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .container {
+            width: 70%;
+            max-width: 1200px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            color: var(--text);
+            text-align: center;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border);
+        }
+
+        .card-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .search-container {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            align-items: center;
+        }
+
+        .search-group {
+            display: flex;
+            gap: 0.75rem;
+            flex: 1;
+            align-items: center;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: var(--input-bg);
+            color: var(--text);
+        }
+
+        input[type="text"]:focus {
+            outline: 2px solid var(--primary);
+            outline-offset: -1px;
+        }
+
+        button {
+            background: var(--primary);
+            color: var(--text);
+            border: none;
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+        }
+
+        .file-input-group {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .file-input-button {
+            background: var(--bg-dark);
+            color: var(--text);
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .file-name {
+            color: var(--text-light);
+            font-size: 0.875rem;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 1.5rem;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--input-bg);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .status-list {
+            margin-top: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--input-bg);
+        }
+
+        .result-item {
+            margin-bottom: 20px;
+        }
+
+        /* Hide default file input */
+        input[type="file"] {
+            display: none;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                width: 90%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                width: 95%;
+            }
+            
+            .search-container {
+                flex-direction: column;
+            }
+            
+            .search-group {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sound Similarity Browser</h1>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Search Sounds</div>
+            </div>
+            <div class="search-container">
+                <div class="search-group">
+                    <input type="text" id="text-query" placeholder="Describe the sound..." required>
+                    <button onclick="handleTextSearch()">Text Search</button>
+                </div>
+                <div class="search-group">
+                    <div class="file-input-group">
+                        <input type="file" id="audio-query" accept="audio/*" onchange="updateFileName()">
+                        <button class="file-input-button" onclick="document.getElementById('audio-query').click()">Choose File</button>
+                        <span class="file-name">No file chosen</span>
+                    </div>
+                    <button onclick="handleAudioSearch()">Audio Search</button>
+                </div>
+            </div>
+            <div id="results" class="results"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Cache Management</div>
+            </div>
+            <div class="search-group">
+                <input type="text" id="folder-path" placeholder="Enter folder path to cache..." required>
+                <button onclick="handleFolderProcess()">Process Folder</button>
+            </div>
+            <div id="progress-container" class="progress-container">
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <div id="progress-text" class="progress-text"></div>
+                <div id="status-list" class="status-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const fileInput = document.getElementById('audio-query');
+        const fileName = document.querySelector('.file-name');
+        const textInput = document.getElementById('text-query');
+        const folderInput = document.getElementById('folder-path');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const statusList = document.getElementById('status-list');
+        const resultsDiv = document.getElementById('results');
+
+        // Update file name when file is selected
+        function updateFileName() {
+            fileName.textContent = fileInput.files[0] ? fileInput.files[0].name : 'No file chosen';
+        }
+
+        // Create a preview section for the uploaded file
+        function updateUploadedAudio(file) {
+            const previewSection = document.createElement('div');
+            previewSection.className = 'uploaded-preview';
+            previewSection.style.cssText = `
+                padding: 1rem;
+                margin: 1rem 0;
+                background: var(--input-bg);
+                border-radius: 8px;
+            `;
+
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.src = URL.createObjectURL(file);
+            audio.style.width = '100%';
+            previewSection.appendChild(audio);
+
+            // Remove any existing preview
+            const existingPreview = document.querySelector('.uploaded-preview');
+            if (existingPreview) {
+                existingPreview.remove();
+            }
+
+            // Insert after the search container but before results
+            const searchContainer = document.querySelector('.search-container');
+            searchContainer.insertAdjacentElement('afterend', previewSection);
+        }
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                updateUploadedAudio(file);
+            }
+        });
+
+        // Handle text-based search
+        async function handleTextSearch() {
+            const text = textInput.value.trim();
+            if (!text) return;
+
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+                await performSearch(formData);
+            } catch (error) {
+                showError('Text search failed: ' + error.message);
+            }
+        }
+
+        // Handle audio-based search
+        async function handleAudioSearch() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            try {
+                const formData = new FormData();
+                formData.append('audio', file);
+                await performSearch(formData);
+            } catch (error) {
+                showError('Audio search failed: ' + error.message);
+            }
+        }
+
+        // Perform search request
+        async function performSearch(formData) {
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayResults(data.results);
+            } catch (error) {
+                console.error('Search error:', error);
+                showError('Search failed: ' + error.message);
+            }
+        }
+
+        // Display search results
+        function displayResults(results) {
+            resultsDiv.innerHTML = '';
+            
+            if (!results.length) {
+                resultsDiv.innerHTML = '<div class="no-results">No matching sounds found</div>';
+                return;
+            }
+
+            results.forEach(([path, similarity]) => {
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = `/serve-audio/${encodeURIComponent(path)}`;
+                
+                const similaritySpan = document.createElement('div');
+                similaritySpan.className = 'similarity-score';
+                similaritySpan.textContent = `Similarity: ${(similarity * 100).toFixed(1)}%`;
+                
+                const pathSpan = document.createElement('div');
+                pathSpan.className = 'file-path';
+                pathSpan.textContent = path;
+                
+                resultItem.appendChild(audio);
+                resultItem.appendChild(similaritySpan);
+                resultItem.appendChild(pathSpan);
+                resultsDiv.appendChild(resultItem);
+            });
+        }
+
+        // Handle folder processing
+        function handleFolderProcess() {
+            const folderPath = document.getElementById('folder-path').value.trim();
+            if (!folderPath) return;
+
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '0%';
+            progressText.textContent = 'Starting...';
+            statusList.innerHTML = '';
+            
+            // Fix the URL encoding for Windows paths
+            const encodedPath = encodeURIComponent(folderPath.replace(/\\/g, '\\\\'));
+            const eventSource = new EventSource(`/process-folder?folder_path=${encodedPath}`);
+            
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                progressFill.style.width = `${data.progress}%`;
+                progressText.textContent = `Processing: ${data.current}/${data.total} files (${data.progress.toFixed(1)}%)`;
+                
+                const statusItem = document.createElement('div');
+                statusItem.className = `status-item status-${data.status.split(':')[0]}`;
+                statusItem.innerHTML = `
+                    <span>${data.file}</span>
+                    <span>${data.status}</span>
+                `;
+                statusList.insertBefore(statusItem, statusList.firstChild);
+                
+                if (data.current === data.total) {
+                    eventSource.close();
+                    progressText.textContent = 'Processing complete!';
+                }
+            };
+            
+            eventSource.onerror = () => {
+                eventSource.close();
+                progressText.textContent = 'Error processing folder!';
+            };
+        }
+
+        // Update progress display
+        function updateProgress(data) {
+            progressFill.style.width = `${data.progress}%`;
+            progressText.textContent = `Processing: ${data.current}/${data.total} files (${data.progress.toFixed(1)}%)`;
+            
+            const statusItem = document.createElement('div');
+            statusItem.className = `status-item status-${data.status.split(':')[0]}`;
+            
+            const statusText = document.createElement('span');
+            statusText.textContent = data.file;
+            
+            const statusLabel = document.createElement('span');
+            statusLabel.textContent = data.status;
+            statusLabel.className = 'status-label';
+            
+            statusItem.appendChild(statusText);
+            statusItem.appendChild(statusLabel);
+            statusList.insertBefore(statusItem, statusList.firstChild);
+            
+            if (data.current === data.total) {
+                progressText.textContent = 'Processing complete!';
+            }
+        }
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = message;
+            
+            document.body.appendChild(errorDiv);
+            
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+
+        // Add event listeners
+        fileInput.addEventListener('change', updateFileName);
+        textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleTextSearch();
+            }
+        });
+        folderInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleFolderProcess();
+            }
+        });
+    </script>
+</body>
+</html>
