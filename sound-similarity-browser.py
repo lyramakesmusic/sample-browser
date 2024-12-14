@@ -55,7 +55,7 @@ class SoundSimilarityBrowser:
             except Exception as e:
                 yield i, total_files, str(audio_file), f"error: {str(e)}"
 
-    def find_similar(self, query_embedding: np.ndarray, top_n: int = 5) -> List[Tuple[str, float]]:
+    def find_similar(self, query_embedding: np.ndarray, top_n: int = 25) -> List[Tuple[str, float]]:
         """Find top-N most similar sounds to the query embedding"""
         similarities = []
         query_embedding = query_embedding.squeeze()
