@@ -388,8 +388,8 @@
                 
                 const audio = document.createElement('audio');
                 audio.controls = true;
-                audio.src = `file://${path}`;
-                
+                audio.src = `/serve-audio/${encodeURIComponent(path)}`;
+
                 const pathSpan = document.createElement('div');
                 pathSpan.className = 'file-path';
                 pathSpan.textContent = path;
