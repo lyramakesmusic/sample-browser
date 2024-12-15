@@ -13,7 +13,6 @@ to run after first install, run `run.bat`. it will open localhost for you
 
 Paste a local filepath into the Cache Management input and press Process Folder. When complete, upload a sound or type a sound description and press search
 
-
-![screenshot of sample browser showing a list of matching samples]()
+![screenshot of sample browser showing a list of matching samples](inference.png)
 
 ![screenshot of sample browser showing a progress bar caching audio latents](caching.png)
