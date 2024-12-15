@@ -315,6 +315,9 @@
                 existingPreview.remove();
             }
 
+            // Delete text query when audio uploaded
+            document.getElementById('text-query').value = '';
+
             // Insert after the search container but before results
             const searchContainer = document.querySelector('.search-container');
             searchContainer.insertAdjacentElement('afterend', previewSection);
@@ -342,7 +345,6 @@
             }
             
             // Clear inputs after submitted
-            document.getElementById('text-query').value = '';
             document.getElementById('audio-query').value = '';
             document.querySelector('.file-name').textContent = 'No file chosen';
             
