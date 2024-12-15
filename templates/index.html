@@ -1,165 +1,549 @@
-import os
-import numpy as np
-import torch
-import laion_clap
-from flask import Flask, request, render_template, jsonify, Response, send_file
-from pathlib import Path
-import librosa
-import json
-from typing import List, Dict, Tuple
-import tempfile
+<!DOCTYPE html>
+<html class="dark">
+<head>
+    <title>Sound Similarity Browser</title>
+    <style>
+        :root {
+            --primary: #60a5fa;
+            --primary-hover: #3b82f6;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --text-light: #94a3b8;
+            --input-bg: #0f172a;
+        }
 
-class SoundSimilarityBrowser:
-    def __init__(self, cache_file: str = "embeddings_cache.jsonl"):
-        self.model = laion_clap.CLAP_Module(enable_fusion=False)
-        self.model.load_ckpt()
-        self.cache_file = cache_file
-        self.embeddings_cache: Dict[str, List[float]] = {}
-        self.load_cache()
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
 
-    def load_cache(self):
-        """Load cache from JSONL file"""
-        if not os.path.exists(self.cache_file):
-            return
-            
-        with open(self.cache_file, 'r') as f:
-            for line in f:
-                try:
-                    item = json.loads(line.strip())
-                    self.embeddings_cache[item['path']] = item['embedding']
-                except Exception as e:
-                    print(f"Error loading cache line: {e}")
+        body {
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+        }
 
-    def _append_to_cache(self, path: str, embedding: List[float]):
-        """Append a single embedding to the JSONL file"""
-        with open(self.cache_file, 'a') as f:
-            json.dump({'path': path, 'embedding': embedding}, f)
-            f.write('\n')
+        .container {
+            width: 70%;
+            max-width: 1200px;
+        }
 
-    def process_folder(self, folder_path: str):
-        """Generator that processes a folder and yields progress"""
-        audio_files = [
-            f for f in Path(folder_path).rglob("*")
-            if f.suffix.lower() in ['.wav', '.mp3', '.ogg', '.flac']
-        ]
-        total_files = len(audio_files)
-        
-        for i, audio_file in enumerate(audio_files, 1):
-            try:
-                # Skip if already in cache
-                if str(audio_file) in self.embeddings_cache:
-                    yield i, total_files, str(audio_file), "skipped"
-                    continue
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            color: var(--text);
+            text-align: center;
+        }
 
-                embedding = self.model.get_audio_embedding_from_filelist(
-                    x=[str(audio_file)], 
-                    use_tensor=True
-                ).squeeze(0).detach().cpu().numpy().tolist()
-                
-                file_path = str(audio_file)
-                self.embeddings_cache[file_path] = embedding
-                self._append_to_cache(file_path, embedding)
-                
-                yield i, total_files, str(audio_file), "processed"
-            
-            except Exception as e:
-                yield i, total_files, str(audio_file), f"error: {str(e)}"
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border);
+        }
 
-    def find_similar(self, query_embedding: np.ndarray, top_n: int = 25) -> List[Tuple[str, float, List[str]]]:
-        """Find top-N most similar sounds to the query embedding, grouping exact duplicates"""
-        query_embedding = query_embedding.squeeze()
-        
-        # First group by identical embeddings
-        embedding_groups = {}
-        for path, cached_embedding in self.embeddings_cache.items():
-            cached_embedding = np.array(cached_embedding)
-            # Convert embedding to tuple so it can be used as dict key
-            emb_key = tuple(cached_embedding)
-            if emb_key not in embedding_groups:
-                embedding_groups[emb_key] = {
-                    'main_path': path,
-                    'alt_paths': [],
-                    'similarity': float(np.dot(query_embedding, cached_embedding) / (
-                        np.linalg.norm(query_embedding) * np.linalg.norm(cached_embedding)
-                    ))
-                }
-            else:
-                embedding_groups[emb_key]['alt_paths'].append(path)
+        .card-header {
+            margin-bottom: 1.5rem;
+        }
 
-        # Convert to list format and sort by similarity
-        unique_results = [
-            (info['main_path'], info['similarity'], info['alt_paths'])
-            for info in embedding_groups.values()
-        ]
-        
-        return sorted(unique_results, key=lambda x: x[1], reverse=True)[:top_n]
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text);
+        }
 
-    def get_text_embedding(self, text: str) -> np.ndarray:
-        """Get embedding for text query"""
-        embedding = self.model.get_text_embedding([text], use_tensor=True)
-        return embedding.detach().cpu().numpy()
+        .search-container {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            align-items: center;
+        }
 
-    def get_audio_embedding(self, audio_path: str) -> np.ndarray:
-        """Get embedding for audio query"""
-        embedding = self.model.get_audio_embedding_from_filelist(
-            x=[audio_path], 
-            use_tensor=True
-        )
-        return embedding.detach().cpu().numpy()
+        .search-group {
+            display: flex;
+            gap: 0.75rem;
+            flex: 1;
+            align-items: center;
+        }
 
-# Flask Application
-app = Flask(__name__)
-browser = SoundSimilarityBrowser()
+        input[type="text"] {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: var(--input-bg);
+            color: var(--text);
+        }
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+        input[type="text"]:focus {
+            outline: 2px solid var(--primary);
+            outline-offset: -1px;
+        }
 
-@app.route('/process-folder', methods=['GET', 'POST'])
-def process_folder():
-    folder_path = request.args.get('folder_path') if request.method == 'GET' else request.form.get('folder_path')
-    if not folder_path:
-        return jsonify({'error': 'No folder path provided'}), 400
-        
-    def generate():
-        for current, total, file_path, status in browser.process_folder(folder_path):
-            data = {
-                'current': current,
-                'total': total,
-                'file': file_path,
-                'status': status,
-                'progress': (current / total) * 100
+        button {
+            background: var(--primary);
+            color: var(--text);
+            border: none;
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+        }
+
+        .file-input-group {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .file-input-button {
+            background: var(--bg-dark);
+            color: var(--text);
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .file-name {
+            color: var(--text-light);
+            font-size: 0.875rem;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 1.5rem;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--input-bg);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .status-list {
+            margin-top: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--input-bg);
+        }
+
+        .result-item {
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .alt-paths {
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .alt-paths summary {
+            cursor: pointer;
+            color: #60a5fa;
+        }
+
+        .alt-path {
+            padding: 0.25rem 0;
+            word-break: break-all;
+        }
+
+        .search-button {
+            width: 120px;
+        }
+
+        @media (max-width: 1152px) {
+            .container {
+                width: 90%;
             }
-            yield f"data: {json.dumps(data)}\n\n"
-    
-    return Response(generate(), mimetype='text/event-stream')
+        }
 
-@app.route('/serve-audio/<path:filepath>')
-def serve_audio(filepath):
-    return send_file(filepath)
+        @media (max-width: 768px) {
+            button {
+                display: block;
+                width: 85%;
+            }
 
-@app.route('/search', methods=['POST'])
-def search():
-    if 'text' in request.form:
-        # Text-based search
-        query_text = request.form['text']
-        query_embedding = browser.get_text_embedding(query_text)
-    else:
-        # Audio-based search
-        if 'audio' not in request.files:
-            return jsonify({'error': 'No audio file uploaded'}), 400
-        
-        audio_file = request.files['audio']
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_audio:
-            audio_file.save(temp_audio.name)
-            query_embedding = browser.get_audio_embedding(temp_audio.name)
-        os.unlink(temp_audio.name)
+            .container {
+                width: 95%;
+            }
+            
+            .search-container {
+                flex-direction: column;
+            }
+            
+            .search-group {
+                width: 100%;
+                flex-direction: column;
+            }
 
-    similar_sounds = browser.find_similar(query_embedding)
-    # Unpack the new format with alt_paths
-    results = [(os.path.abspath(path), similarity, alt_paths) 
-              for path, similarity, alt_paths in similar_sounds]
-    return jsonify({'results': results})
+            input[type="text"] {
+                width: 85%;
+            }
 
-if __name__ == '__main__':
-    app.run(debug=True)
+            .file-input-group {
+                width: 85%
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sound Similarity Browser</h1>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Search Sounds</div>
+            </div>
+            <div class="search-container">
+                <input type="text" id="text-query" placeholder="Describe the sound...">
+                <p>or</p>
+                <div class="file-input-group">
+                    <button class="file-input-button" onclick="document.getElementById('audio-query').click()">Choose File</button>
+                    <input type="file" id="audio-query" accept="audio/*" style="display: none" onchange="updateFileName()">
+                    <span class="file-name">No file chosen</span>
+                </div>
+                <button onclick="handleSearch()" class="search-button">Search</button>
+            </div>
+            <div id="results" class="results"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Cache Management</div>
+            </div>
+            <div class="search-group">
+                <input type="text" id="folder-path" placeholder="Enter folder path to cache..." required>
+                <button onclick="handleFolderProcess()">Process Folder</button>
+            </div>
+            <div id="progress-container" class="progress-container">
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <div id="progress-text" class="progress-text"></div>
+                <div id="status-list" class="status-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const fileInput = document.getElementById('audio-query');
+        const fileName = document.querySelector('.file-name');
+        const textInput = document.getElementById('text-query');
+        const folderInput = document.getElementById('folder-path');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const statusList = document.getElementById('status-list');
+        const resultsDiv = document.getElementById('results');
+        let processingStartTime = null;
+        let processedCounts = [];
+
+        function formatTime(seconds) {
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            if (hrs > 0) {
+                return `${hrs}h ${mins}m ${secs}s`;
+            } else if (mins > 0) {
+                return `${mins}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+
+        // Update file name when file is selected
+        function updateFileName() {
+            fileName.textContent = fileInput.files[0] ? fileInput.files[0].name : 'No file chosen';
+        }
+
+        // Create a preview section for the uploaded file
+        function updateUploadedAudio(file) {
+            const previewSection = document.createElement('div');
+            previewSection.className = 'uploaded-preview';
+            previewSection.style.cssText = `
+                padding: 1rem;
+                margin: 1rem 0;
+                border-radius: 8px;
+            `;
+
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.src = URL.createObjectURL(file);
+            audio.style.width = '100%';
+            previewSection.appendChild(audio);
+
+            // Remove any existing preview
+            const existingPreview = document.querySelector('.uploaded-preview');
+            if (existingPreview) {
+                existingPreview.remove();
+            }
+
+            // Insert after the search container but before results
+            const searchContainer = document.querySelector('.search-container');
+            searchContainer.insertAdjacentElement('afterend', previewSection);
+        }
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                updateUploadedAudio(file);
+            }
+        });
+
+        function handleSearch() {
+            const audioFile = document.getElementById('audio-query').files[0];
+            const textQuery = document.getElementById('text-query').value.trim();
+            
+            const formData = new FormData();
+            if (audioFile) {
+                formData.append('audio', audioFile);
+            } else if (textQuery) {
+                formData.append('text', textQuery);
+            } else {
+                alert('Please enter a text query or choose an audio file');
+                return;
+            }
+            
+            // Clear inputs after submitted
+            document.getElementById('text-query').value = '';
+            document.getElementById('audio-query').value = '';
+            document.querySelector('.file-name').textContent = 'No file chosen';
+            
+            const searchButton = document.querySelector('.search-button');
+            searchButton.innerHTML = 'Searching...';
+            
+            performSearch(formData).then(() => {
+                searchButton.textContent = 'Search';
+            }).catch(() => {
+                searchButton.textContent = 'Search';
+            });
+        }
+
+        // Perform search request
+        async function performSearch(formData) {
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayResults(data.results);
+            } catch (error) {
+                console.error('Search error:', error);
+                showError('Search failed: ' + error.message);
+            }
+        }
+
+        // Display search results
+        function displayResults(results) {
+            resultsDiv.innerHTML = '';
+            
+            if (!results.length) {
+                resultsDiv.innerHTML = '<div class="no-results">No matching sounds found</div>';
+                return;
+            }
+
+            results.forEach(([path, similarity, altPaths]) => {
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                
+                const header = document.createElement('div');
+                header.className = 'result-header';
+                
+                const similaritySpan = document.createElement('div');
+                similaritySpan.className = 'similarity-score';
+                similaritySpan.textContent = `${(similarity * 100).toFixed(1)}% match`;
+                header.appendChild(similaritySpan);
+                
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = `/serve-audio/${encodeURIComponent(path)}`;
+
+                const pathSpan = document.createElement('div');
+                pathSpan.className = 'file-path';
+                pathSpan.textContent = path;
+                
+                resultItem.appendChild(header);
+                resultItem.appendChild(audio);
+                resultItem.appendChild(pathSpan);
+
+                // Add alternate paths if they exist
+                if (altPaths && altPaths.length > 0) {
+                    const altPathsDiv = document.createElement('div');
+                    altPathsDiv.className = 'alt-paths';
+                    altPathsDiv.innerHTML = `
+                        <details>
+                            <summary>${altPaths.length} duplicate${altPaths.length > 1 ? 's' : ''}</summary>
+                            ${altPaths.map(p => `<div class="alt-path">${p}</div>`).join('')}
+                        </details>
+                    `;
+                    resultItem.appendChild(altPathsDiv);
+                }
+
+                resultsDiv.appendChild(resultItem);
+            });
+        }
+
+        // Handle folder processing
+        function handleFolderProcess() {
+            const folderPath = document.getElementById('folder-path').value.trim();
+            if (!folderPath) return;
+
+            const progressContainer = document.getElementById('progress-container');
+            const progressText = document.getElementById('progress-text');
+            const statusList = document.getElementById('status-list');
+            
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '0%';
+            progressText.textContent = 'Starting...';
+            statusList.innerHTML = '';
+            
+            processingStartTime = Date.now();
+            processedCounts = [];
+            
+            const eventSource = new EventSource(`/process-folder?folder_path=${encodeURIComponent(folderPath)}`);
+            
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const currentTime = Date.now();
+                
+                // Store current count and timestamp
+                processedCounts.push({
+                    count: data.current,
+                    timestamp: currentTime
+                });
+
+                // Keep only last 30 seconds of data points
+                const thirtySecondsAgo = currentTime - 30000;
+                processedCounts = processedCounts.filter(p => p.timestamp >= thirtySecondsAgo);
+
+                // Calculate rate based on recent processing speed
+                const oldestPoint = processedCounts[0];
+                const timeSpan = (currentTime - oldestPoint.timestamp) / 1000; // in seconds
+                const filesProcessed = data.current - oldestPoint.count;
+                const filesPerSecond = filesProcessed / timeSpan;
+
+                const remainingFiles = data.total - data.current;
+                const estimatedRemainingSeconds = filesPerSecond > 0 ? remainingFiles / filesPerSecond : 0;
+                const elapsedSeconds = (currentTime - processingStartTime) / 1000;
+                
+                progressFill.style.width = `${data.progress}%`;
+                progressText.textContent = `Processing: ${data.current}/${data.total} files (${data.progress.toFixed(1)}%) · 
+                    ${formatTime(elapsedSeconds)}/${formatTime(estimatedRemainingSeconds)}, ${filesPerSecond.toFixed(1)}/s`;
+                
+                const statusItem = document.createElement('div');
+                statusItem.className = `status-item status-${data.status.split(':')[0]}`;
+                statusItem.innerHTML = `
+                    <span>${data.file}</span>
+                    <span>${data.status}</span>
+                `;
+                statusList.insertBefore(statusItem, statusList.firstChild);
+                
+                if (data.current === data.total) {
+                    eventSource.close();
+                    progressText.textContent = `Complete! Total time: ${formatTime(elapsedSeconds)}`;
+                }
+            };
+            
+            eventSource.onerror = () => {
+                eventSource.close();
+                progressText.textContent = 'Error processing folder!';
+            };
+        }
+
+        // Update progress display
+        function updateProgress(data) {
+            progressFill.style.width = `${data.progress}%`;
+            progressText.textContent = `Processing: ${data.current}/${data.total} files (${data.progress.toFixed(1)}%)`;
+            
+            const statusItem = document.createElement('div');
+            statusItem.className = `status-item status-${data.status.split(':')[0]}`;
+            
+            const statusText = document.createElement('span');
+            statusText.textContent = data.file;
+            
+            const statusLabel = document.createElement('span');
+            statusLabel.textContent = data.status;
+            statusLabel.className = 'status-label';
+            
+            statusItem.appendChild(statusText);
+            statusItem.appendChild(statusLabel);
+            statusList.insertBefore(statusItem, statusList.firstChild);
+            
+            if (data.current === data.total) {
+                progressText.textContent = 'Processing complete!';
+            }
+        }
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = message;
+            
+            document.body.appendChild(errorDiv);
+            
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+
+        // Add event listeners
+        fileInput.addEventListener('change', updateFileName);
+        textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleTextSearch();
+            }
+        });
+        folderInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleFolderProcess();
+            }
+        });
+    </script>
+</body>
+</html>
