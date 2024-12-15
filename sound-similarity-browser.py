@@ -65,19 +65,49 @@ class SoundSimilarityBrowser:
             except Exception as e:
                 yield i, total_files, str(audio_file), f"error: {str(e)}"
 
-    def find_similar(self, query_embedding: np.ndarray, top_n: int = 25) -> List[Tuple[str, float]]:
-        """Find top-N most similar sounds to the query embedding"""
+    def find_similar(self, query_embedding: np.ndarray, top_n: int = 25) -> List[Tuple[str, float, List[str]]]:
+        """Find top-N most similar sounds to the query embedding, grouping duplicates"""
         similarities = []
         query_embedding = query_embedding.squeeze()
         
+        # First pass: calculate all similarities
+        path_similarities = {}
         for path, cached_embedding in self.embeddings_cache.items():
             cached_embedding = np.array(cached_embedding)
             similarity = np.dot(query_embedding, cached_embedding) / (
                 np.linalg.norm(query_embedding) * np.linalg.norm(cached_embedding)
             )
-            similarities.append((path, float(similarity)))
+            
+            # Use filename and filesize as a simple duplicate detector
+            filename = os.path.basename(path)
+            try:
+                filesize = os.path.getsize(path)
+                file_id = f"{filename}_{filesize}"  # Simple duplicate detection key
+            except:
+                file_id = filename  # Fallback if file can't be accessed
+            
+            if file_id not in path_similarities:
+                path_similarities[file_id] = {
+                    'main_path': path,
+                    'similarity': float(similarity),
+                    'alt_paths': []
+                }
+            else:
+                # If this path has higher similarity, make it the main path
+                if similarity > path_similarities[file_id]['similarity']:
+                    path_similarities[file_id]['alt_paths'].append(path_similarities[file_id]['main_path'])
+                    path_similarities[file_id]['main_path'] = path
+                    path_similarities[file_id]['similarity'] = float(similarity)
+                else:
+                    path_similarities[file_id]['alt_paths'].append(path)
+
+        # Convert to list and sort
+        unique_results = [
+            (info['main_path'], info['similarity'], info['alt_paths'])
+            for info in path_similarities.values()
+        ]
         
-        return sorted(similarities, key=lambda x: x[1], reverse=True)[:top_n]
+        return sorted(unique_results, key=lambda x: x[1], reverse=True)[:top_n]
 
     def get_text_embedding(self, text: str) -> np.ndarray:
         """Get embedding for text query"""
@@ -141,8 +171,9 @@ def search():
         os.unlink(temp_audio.name)
 
     similar_sounds = browser.find_similar(query_embedding)
-    # Return absolute paths for direct file access
-    results = [(os.path.abspath(path), similarity) for path, similarity in similar_sounds]
+    # Unpack the new format with alt_paths
+    results = [(os.path.abspath(path), similarity, alt_paths) 
+              for path, similarity, alt_paths in similar_sounds]
     return jsonify({'results': results})
 
 if __name__ == '__main__':
