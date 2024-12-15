@@ -65,46 +65,31 @@ class SoundSimilarityBrowser:
             except Exception as e:
                 yield i, total_files, str(audio_file), f"error: {str(e)}"
 
-    def find_similar(self, query_embedding: np.ndarray, top_n: int = 25) -> List[Tuple[str, float, List[str]]]:
-        """Find top-N most similar sounds to the query embedding, grouping duplicates"""
-        similarities = []
+    def find_similar(self, query_embedding: np.ndarray, top_n: int = 5) -> List[Tuple[str, float, List[str]]]:
+        """Find top-N most similar sounds to the query embedding, grouping exact duplicates"""
         query_embedding = query_embedding.squeeze()
         
-        # First pass: calculate all similarities
-        path_similarities = {}
+        # First group by identical embeddings
+        embedding_groups = {}
         for path, cached_embedding in self.embeddings_cache.items():
             cached_embedding = np.array(cached_embedding)
-            similarity = np.dot(query_embedding, cached_embedding) / (
-                np.linalg.norm(query_embedding) * np.linalg.norm(cached_embedding)
-            )
-            
-            # Use filename and filesize as a simple duplicate detector
-            filename = os.path.basename(path)
-            try:
-                filesize = os.path.getsize(path)
-                file_id = f"{filename}_{filesize}"  # Simple duplicate detection key
-            except:
-                file_id = filename  # Fallback if file can't be accessed
-            
-            if file_id not in path_similarities:
-                path_similarities[file_id] = {
+            # Convert embedding to tuple so it can be used as dict key
+            emb_key = tuple(cached_embedding)
+            if emb_key not in embedding_groups:
+                embedding_groups[emb_key] = {
                     'main_path': path,
-                    'similarity': float(similarity),
-                    'alt_paths': []
+                    'alt_paths': [],
+                    'similarity': float(np.dot(query_embedding, cached_embedding) / (
+                        np.linalg.norm(query_embedding) * np.linalg.norm(cached_embedding)
+                    ))
                 }
             else:
-                # If this path has higher similarity, make it the main path
-                if similarity > path_similarities[file_id]['similarity']:
-                    path_similarities[file_id]['alt_paths'].append(path_similarities[file_id]['main_path'])
-                    path_similarities[file_id]['main_path'] = path
-                    path_similarities[file_id]['similarity'] = float(similarity)
-                else:
-                    path_similarities[file_id]['alt_paths'].append(path)
+                embedding_groups[emb_key]['alt_paths'].append(path)
 
-        # Convert to list and sort
+        # Convert to list format and sort by similarity
         unique_results = [
             (info['main_path'], info['similarity'], info['alt_paths'])
-            for info in path_similarities.values()
+            for info in embedding_groups.values()
         ]
         
         return sorted(unique_results, key=lambda x: x[1], reverse=True)[:top_n]
