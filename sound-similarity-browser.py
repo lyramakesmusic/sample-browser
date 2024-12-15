@@ -10,7 +10,7 @@ from typing import List, Dict, Tuple
 import tempfile
 
 class SoundSimilarityBrowser:
-    def __init__(self, cache_file: str = "embeddings_cache.json"):
+    def __init__(self, cache_file: str = "embeddings_cache.jsonl"):
         self.model = laion_clap.CLAP_Module(enable_fusion=False)
         self.model.load_ckpt()
         self.cache_file = cache_file
@@ -18,15 +18,23 @@ class SoundSimilarityBrowser:
         self.load_cache()
 
     def load_cache(self):
-        """Load existing cache if it exists"""
-        if os.path.exists(self.cache_file):
-            with open(self.cache_file, 'r') as f:
-                self.embeddings_cache = json.load(f)
+        """Load cache from JSONL file"""
+        if not os.path.exists(self.cache_file):
+            return
+            
+        with open(self.cache_file, 'r') as f:
+            for line in f:
+                try:
+                    item = json.loads(line.strip())
+                    self.embeddings_cache[item['path']] = item['embedding']
+                except Exception as e:
+                    print(f"Error loading cache line: {e}")
 
-    def _save_cache(self):
-        """Save embeddings cache to file"""
-        with open(self.cache_file, 'w') as f:
-            json.dump(self.embeddings_cache, f)
+    def _append_to_cache(self, path: str, embedding: List[float]):
+        """Append a single embedding to the JSONL file"""
+        with open(self.cache_file, 'a') as f:
+            json.dump({'path': path, 'embedding': embedding}, f)
+            f.write('\n')
 
     def process_folder(self, folder_path: str):
         """Generator that processes a folder and yields progress"""
@@ -48,8 +56,10 @@ class SoundSimilarityBrowser:
                     use_tensor=True
                 ).squeeze(0).detach().cpu().numpy().tolist()
                 
-                self.embeddings_cache[str(audio_file)] = embedding
-                self._save_cache()  # Save after each file in case of interruption
+                file_path = str(audio_file)
+                self.embeddings_cache[file_path] = embedding
+                self._append_to_cache(file_path, embedding)
+                
                 yield i, total_files, str(audio_file), "processed"
             
             except Exception as e:
