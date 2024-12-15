@@ -242,6 +242,22 @@
         const progressText = document.getElementById('progress-text');
         const statusList = document.getElementById('status-list');
         const resultsDiv = document.getElementById('results');
+        let processingStartTime = null;
+        let processedCounts = [];
+
+        function formatTime(seconds) {
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            if (hrs > 0) {
+                return `${hrs}h ${mins}m ${secs}s`;
+            } else if (mins > 0) {
+                return `${mins}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
 
         // Update file name when file is selected
         function updateFileName() {
@@ -368,20 +384,47 @@
             const folderPath = document.getElementById('folder-path').value.trim();
             if (!folderPath) return;
 
+            const progressContainer = document.getElementById('progress-container');
+            const progressText = document.getElementById('progress-text');
+            const statusList = document.getElementById('status-list');
+            
             progressContainer.style.display = 'block';
             progressFill.style.width = '0%';
             progressText.textContent = 'Starting...';
             statusList.innerHTML = '';
             
-            // Fix the URL encoding for Windows paths
-            const encodedPath = encodeURIComponent(folderPath.replace(/\\/g, '\\\\'));
-            const eventSource = new EventSource(`/process-folder?folder_path=${encodedPath}`);
+            processingStartTime = Date.now();
+            processedCounts = [];
+            
+            const eventSource = new EventSource(`/process-folder?folder_path=${encodeURIComponent(folderPath)}`);
             
             eventSource.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+                const currentTime = Date.now();
+                
+                // Store current count and timestamp
+                processedCounts.push({
+                    count: data.current,
+                    timestamp: currentTime
+                });
+
+                // Keep only last 30 seconds of data points
+                const thirtySecondsAgo = currentTime - 30000;
+                processedCounts = processedCounts.filter(p => p.timestamp >= thirtySecondsAgo);
+
+                // Calculate rate based on recent processing speed
+                const oldestPoint = processedCounts[0];
+                const timeSpan = (currentTime - oldestPoint.timestamp) / 1000; // in seconds
+                const filesProcessed = data.current - oldestPoint.count;
+                const filesPerSecond = filesProcessed / timeSpan;
+
+                const remainingFiles = data.total - data.current;
+                const estimatedRemainingSeconds = filesPerSecond > 0 ? remainingFiles / filesPerSecond : 0;
+                const elapsedSeconds = (currentTime - processingStartTime) / 1000;
                 
                 progressFill.style.width = `${data.progress}%`;
-                progressText.textContent = `Processing: ${data.current}/${data.total} files (${data.progress.toFixed(1)}%)`;
+                progressText.textContent = `Processing: ${data.current}/${data.total} files (${data.progress.toFixed(1)}%) · 
+                    ${formatTime(elapsedSeconds)}/${formatTime(estimatedRemainingSeconds)}, ${filesPerSecond.toFixed(1)}/s`;
                 
                 const statusItem = document.createElement('div');
                 statusItem.className = `status-item status-${data.status.split(':')[0]}`;
@@ -393,7 +436,7 @@
                 
                 if (data.current === data.total) {
                     eventSource.close();
-                    progressText.textContent = 'Processing complete!';
+                    progressText.textContent = `Complete! Total time: ${formatTime(elapsedSeconds)}`;
                 }
             };
             
