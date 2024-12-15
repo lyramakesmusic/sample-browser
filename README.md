@@ -5,7 +5,7 @@ sound-similarity sample browser via [CLAP](https://github.com/LAION-AI/CLAP) emb
 
 ### Install:
 
-download this repo, unzip it into a folder, and run `install.bat`. you will need [CUDA](https://developer.nvidia.com/cuda-downloads?target_os=Windows&target_arch=x86_64) and python installed.
+**download this repo, unzip it into a folder, and run `install.bat`.** you will need [CUDA](https://developer.nvidia.com/cuda-downloads?target_os=Windows&target_arch=x86_64) and python installed.
 
 to run after first install, run `run.bat`. it will open localhost for you
 
