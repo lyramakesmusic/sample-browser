@@ -162,18 +162,38 @@
             margin-bottom: 20px;
         }
 
-        /* Hide default file input */
         input[type="file"] {
             display: none;
         }
 
-        @media (max-width: 1024px) {
+        .alt-paths {
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .alt-paths summary {
+            cursor: pointer;
+            color: #60a5fa;
+        }
+
+        .alt-path {
+            padding: 0.25rem 0;
+            word-break: break-all;
+        }
+
+        @media (max-width: 1152px) {
             .container {
                 width: 90%;
             }
         }
 
         @media (max-width: 768px) {
+            button {
+                display: block;
+                width: 85%;
+            }
+
             .container {
                 width: 95%;
             }
@@ -184,6 +204,15 @@
             
             .search-group {
                 width: 100%;
+                flex-direction: column;
+            }
+
+            input[type="text"] {
+                width: 85%;
+            }
+
+            .file-input-group {
+                width: 85%
             }
         }
     </style>
@@ -197,18 +226,14 @@
                 <div class="card-title">Search Sounds</div>
             </div>
             <div class="search-container">
-                <div class="search-group">
-                    <input type="text" id="text-query" placeholder="Describe the sound..." required>
-                    <button onclick="handleTextSearch()">Text Search</button>
+                <input type="text" id="text-query" placeholder="Describe the sound...">
+                <p>or</p>
+                <div class="file-input-group">
+                    <button class="file-input-button" onclick="document.getElementById('audio-query').click()">Choose File</button>
+                    <input type="file" id="audio-query" accept="audio/*" style="display: none" onchange="updateFileName()">
+                    <span class="file-name">No file chosen</span>
                 </div>
-                <div class="search-group">
-                    <div class="file-input-group">
-                        <input type="file" id="audio-query" accept="audio/*" onchange="updateFileName()">
-                        <button class="file-input-button" onclick="document.getElementById('audio-query').click()">Choose File</button>
-                        <span class="file-name">No file chosen</span>
-                    </div>
-                    <button onclick="handleAudioSearch()">Audio Search</button>
-                </div>
+                <button onclick="handleSearch()" class="search-button">Search</button>
             </div>
             <div id="results" class="results"></div>
         </div>
@@ -271,7 +296,6 @@
             previewSection.style.cssText = `
                 padding: 1rem;
                 margin: 1rem 0;
-                background: var(--input-bg);
                 border-radius: 8px;
             `;
 
@@ -299,32 +323,26 @@
             }
         });
 
-        // Handle text-based search
-        async function handleTextSearch() {
-            const text = textInput.value.trim();
-            if (!text) return;
-
-            try {
-                const formData = new FormData();
-                formData.append('text', text);
-                await performSearch(formData);
-            } catch (error) {
-                showError('Text search failed: ' + error.message);
+        function handleSearch() {
+            const audioFile = document.getElementById('audio-query').files[0];
+            const textQuery = document.getElementById('text-query').value.trim();
+            
+            const formData = new FormData();
+            if (audioFile) {
+                // If using audio file, clear text input
+                document.getElementById('text-query').value = '';
+                formData.append('audio', audioFile);
+            } else if (textQuery) {
+                // If using text, clear audio input and filename display
+                document.getElementById('audio-query').value = '';
+                document.querySelector('.file-name').textContent = 'No file chosen';
+                formData.append('text', textQuery);
+            } else {
+                alert('Please enter a text query or choose an audio file');
+                return;
             }
-        }
-
-        // Handle audio-based search
-        async function handleAudioSearch() {
-            const file = fileInput.files[0];
-            if (!file) return;
-
-            try {
-                const formData = new FormData();
-                formData.append('audio', file);
-                await performSearch(formData);
-            } catch (error) {
-                showError('Audio search failed: ' + error.message);
-            }
+            
+            performSearch(formData);
         }
 
         // Perform search request
@@ -356,25 +374,43 @@
                 return;
             }
 
-            results.forEach(([path, similarity]) => {
+            results.forEach(([path, similarity, altPaths]) => {
                 const resultItem = document.createElement('div');
                 resultItem.className = 'result-item';
                 
-                const audio = document.createElement('audio');
-                audio.controls = true;
-                audio.src = `/serve-audio/${encodeURIComponent(path)}`;
+                const header = document.createElement('div');
+                header.className = 'result-header';
                 
                 const similaritySpan = document.createElement('div');
                 similaritySpan.className = 'similarity-score';
-                similaritySpan.textContent = `Similarity: ${(similarity * 100).toFixed(1)}%`;
+                similaritySpan.textContent = `${(similarity * 100).toFixed(1)}% match`;
+                header.appendChild(similaritySpan);
+                
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = `file://${path}`;
                 
                 const pathSpan = document.createElement('div');
                 pathSpan.className = 'file-path';
                 pathSpan.textContent = path;
                 
+                resultItem.appendChild(header);
                 resultItem.appendChild(audio);
-                resultItem.appendChild(similaritySpan);
                 resultItem.appendChild(pathSpan);
+
+                // Add alternate paths if they exist
+                if (altPaths && altPaths.length > 0) {
+                    const altPathsDiv = document.createElement('div');
+                    altPathsDiv.className = 'alt-paths';
+                    altPathsDiv.innerHTML = `
+                        <details>
+                            <summary>${altPaths.length} duplicate${altPaths.length > 1 ? 's' : ''}</summary>
+                            ${altPaths.map(p => `<div class="alt-path">${p}</div>`).join('')}
+                        </details>
+                    `;
+                    resultItem.appendChild(altPathsDiv);
+                }
+
                 resultsDiv.appendChild(resultItem);
             });
         }
