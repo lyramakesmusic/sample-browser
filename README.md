@@ -1,5 +1,5 @@
 # sample-browser
-sound-similarity sample browser via [clap](https://github.com/LAION-AI/CLAP)
+sound-similarity sample browser via [CLAP](https://github.com/LAION-AI/CLAP) embeddings cosine similarity
 
 currently windows-only: the code will run on other OSs, but the install and run scripts will need to be rewritten
 
