@@ -1,7 +1,7 @@
 # sample-browser
 sound-similarity sample browser via [CLAP](https://github.com/LAION-AI/CLAP) embeddings cosine distance
 
-code is multiplatform, but installer and run file are windows-only. requires ~4.2 GB vram to cache
+code is multiplatform, but installer and run file are windows-only. requires ~4.2 GB vram to run
 
 ### Install:
 
