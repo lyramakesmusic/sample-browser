@@ -1,7 +1,7 @@
 # sample-browser
 sound-similarity sample browser via [CLAP](https://github.com/LAION-AI/CLAP) embeddings cosine distance
 
- requires ~4.2 GB vram to run
+ requires ~4.2 GB VRAM to run (you will need a GPU)
 
 ### Install:
 
