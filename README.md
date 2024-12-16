@@ -11,7 +11,7 @@ to run after first install, run `run.bat`. it will open localhost for you
 
 code is multiplatform, but installer and run file are windows-only.
 
-other OSs: create a venv `python -m venv venv`, enter it, run `pip install flask laion_clap librosa numpy torch`, make sure the CUDA version of torch is installed `pip install -U torch==2.4.0+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121`, then run `python sound-similarity-browser.py` and go to http://localhost:5000/
+other OSs: create a venv `python -m venv venv`, enter it `source venv/Scripts/activate`, run `pip install flask laion_clap librosa numpy torch`, make sure the CUDA version of torch is installed `pip install -U torch==2.4.0+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121`, then run `python sound-similarity-browser.py` and go to http://localhost:5000/
 
 ### Usage:
 
