@@ -21,7 +21,7 @@ create a venv `python -m venv venv`, enter it `source venv/Scripts/activate`, ru
 
 ## Usage:
 
-Paste a local filepath into the Cache Management input and press Process Folder. When complete, upload a sound or type a sound description and press search.
+Paste a local filepath into the Cache Management input and press Process Folder. When complete, upload a sound (use upload button or drag-drop an audio file) or type a sound description and press search.
 
 ![screenshot of sample browser showing a list of matching samples](demos/inference.png)
 
