@@ -136,6 +136,12 @@ def process_folder():
 
 @app.route('/serve-audio/<path:filepath>')
 def serve_audio(filepath):
+    
+    # Check if this is a relative path on macOS or Linux
+    if os.name == 'posix':
+        # Convert to absolute path by adding the root slash
+        filepath = '/' + filepath
+    
     return send_file(filepath)
 
 @app.route('/search', methods=['POST'])
