@@ -225,7 +225,7 @@
     <div class="container">
         <h1>Sound Similarity Browser</h1>
 
-        <div class="card">
+        <div class="card" id="drop-zone">
             <div class="card-header">
                 <div class="card-title">Search Sounds</div>
             </div>
@@ -333,10 +333,21 @@
         function handleSearch() {
             const audioFile = document.getElementById('audio-query').files[0];
             const textQuery = document.getElementById('text-query').value.trim();
+            const existingPreview = document.querySelector('.uploaded-preview audio');
             
             const formData = new FormData();
             if (audioFile) {
                 formData.append('audio', audioFile);
+            } else if (existingPreview && existingPreview.src) {
+                // Convert the blob URL back to a file
+                fetch(existingPreview.src)
+                    .then(res => res.blob())
+                    .then(blob => {
+                        const file = new File([blob], 'audio-query', { type: 'audio/mpeg' });
+                        formData.append('audio', file);
+                        performSearchRequest(formData);
+                    });
+                return;
             } else if (textQuery) {
                 formData.append('text', textQuery);
                 const existingPreview = document.querySelector('.uploaded-preview');
@@ -348,10 +359,10 @@
                 return;
             }
             
-            // Clear inputs after submitted
-            document.getElementById('audio-query').value = '';
-            document.querySelector('.file-name').textContent = 'No file chosen';
-            
+            performSearchRequest(formData);
+        }
+
+        function performSearchRequest(formData) {
             const searchButton = document.querySelector('.search-button');
             searchButton.innerHTML = 'Searching...';
             
@@ -546,6 +557,36 @@
                     event.preventDefault();
                     handleSearch();
                 }
+            }
+        });
+
+        // Add these event listeners for drag and drop
+        const dropZone = document.getElementById('drop-zone');
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.style.border = '2px dashed var(--primary)';
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.style.border = 'none';
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.style.border = 'none';
+            
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('audio/')) {
+                fileInput.files = e.dataTransfer.files;
+                updateFileName();
+                updateUploadedAudio(file);
+            } else {
+                alert('Please drop an audio file');
             }
         });
     </script>
