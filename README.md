@@ -23,6 +23,8 @@ create a venv `python -m venv venv`, enter it `source venv/Scripts/activate`, ru
 
 Paste a local filepath into the Cache Management input and press Process Folder. When complete, upload a sound (use upload button or drag-drop an audio file) or type a sound description and press search.
 
+To find top-10 similar tags from `tags.json`, upload a sound to the caption section and press search. Feel free to add your own tags.
+
 ![screenshot of sample browser showing a list of matching samples](demos/inference.png)
 
 ![screenshot of sample browser showing a progress bar caching audio latents](demos/caching.png)
