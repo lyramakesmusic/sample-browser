@@ -125,7 +125,7 @@
             font-size: 1rem;
         }
 
-        .file-name {
+        .file-name, .file-caption-name {
             color: var(--text-light);
             font-size: 0.875rem;
         }
@@ -186,6 +186,38 @@
             width: 120px;
         }
 
+        .caption-result {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .caption-text {
+            color: var(--text);
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            padding: 20px;
+            text-align: center;
+            margin: 10px 0;
+            transition: border .3s ease-in-out;
+        }
+
+        .drop-zone.dragover {
+            border-color: #000;
+            background: #f0f0f0;
+        }
+
+        .audio-preview {
+            margin: 10px 0;
+        }
+
         @media (max-width: 1152px) {
             .container {
                 width: 90%;
@@ -225,7 +257,7 @@
     <div class="container">
         <h1>Sound Similarity Browser</h1>
 
-        <div class="card" id="drop-zone">
+        <div class="card" id="search-drop-zone">
             <div class="card-header">
                 <div class="card-title">Search Sounds</div>
             </div>
@@ -239,7 +271,24 @@
                 </div>
                 <button onclick="handleSearch()" class="search-button">Search</button>
             </div>
+            <div class="preview-section" id="search-preview"></div>
             <div id="results" class="results"></div>
+        </div>
+
+        <div class="card" id="caption-drop-zone">
+            <div class="card-header">
+                <div class="card-title">Caption</div>
+            </div>
+            <div class="search-container">
+                <div class="file-input-group">
+                    <button class="file-input-button" onclick="document.getElementById('audio-query-caption').click()">Choose File</button>
+                    <input type="file" id="audio-query-caption" accept="audio/*" style="display: none">
+                    <span class="file-caption-name">No file chosen</span>
+                </div>
+                <button onclick="handleCaption()" class="search-button">Caption</button>
+            </div>
+            <div class="preview-section" id="caption-preview"></div>
+            <div class="results" id="caption-results"></div>
         </div>
 
         <div class="card">
@@ -261,16 +310,23 @@
     </div>
 
     <script>
+
         // DOM Elements
-        const fileInput = document.getElementById('audio-query');
-        const fileName = document.querySelector('.file-name');
+        const searchFileInput = document.getElementById('audio-query');
+        const searchFileName = document.querySelector('.file-name');
         const textInput = document.getElementById('text-query');
+        const searchDropZone = document.getElementById('search-drop-zone');
+        const searchResults = document.getElementById('results');
+        const captionFileInput = document.getElementById('audio-query-caption');
+        const captionFileName = document.querySelector('.file-caption-name');
+        const captionDropZone = document.getElementById('caption-drop-zone');
+        const captionResults = document.getElementById('caption-results');
         const folderInput = document.getElementById('folder-path');
         const progressContainer = document.getElementById('progress-container');
         const progressFill = document.getElementById('progress-fill');
         const progressText = document.getElementById('progress-text');
         const statusList = document.getElementById('status-list');
-        const resultsDiv = document.getElementById('results');
+
         let processingStartTime = null;
         let processedCounts = [];
 
@@ -288,117 +344,164 @@
             }
         }
 
-        // Update file name when file is selected
-        function updateFileName() {
-            fileName.textContent = fileInput.files[0] ? fileInput.files[0].name : 'No file chosen';
+        // Unified File Upload Handler
+        function setupFileUploads() {
+            // Search uploader
+            setupFileUpload({
+                input: searchFileInput,
+                fileName: searchFileName,
+                dropZone: searchDropZone,
+                previewContainer: searchDropZone.closest('.card'),
+                clearText: textInput,
+                insertPosition: 'beforeend'
+            });
+
+            // Caption uploader
+            setupFileUpload({
+                input: captionFileInput,
+                fileName: captionFileName,
+                dropZone: captionDropZone,
+                previewContainer: captionResults,
+                insertPosition: 'beforeend'
+            });
         }
 
-        // Create a preview section for the uploaded file
-        function updateUploadedAudio(file) {
-            const previewSection = document.createElement('div');
-            previewSection.className = 'uploaded-preview';
-            previewSection.style.cssText = `
-                padding: 1rem;
-                margin: 1rem 0;
-                border-radius: 8px;
-            `;
+        // Generic File Upload Setup
+        function setupFileUpload(config) {
+            const previewSection = config.dropZone.querySelector('.preview-section') || 
+                      document.getElementById(config.input.id === 'audio-query' ? 'search-preview' : 'caption-preview');
+            config.input.addEventListener('change', e => {
+                const file = e.target.files[0];
+                if (file) {
+                    config.fileName.textContent = file.name;
+                    createAudioPreview(file, previewSection);
+                    if (config.clearText) config.clearText.value = '';
+                }
+            });
 
+            config.dropZone.addEventListener('dragover', e => {
+                e.preventDefault();
+                config.dropZone.style.border = '2px dashed var(--primary)';
+            });
+
+            config.dropZone.addEventListener('dragleave', e => {
+                e.preventDefault();
+                config.dropZone.style.border = 'none';
+            });
+
+            config.dropZone.addEventListener('drop', e => {
+                e.preventDefault();
+                config.dropZone.style.border = 'none';
+                const file = e.dataTransfer.files[0];
+                if (file?.type.startsWith('audio/')) {
+                    config.input.files = e.dataTransfer.files;
+                    config.fileName.textContent = file.name;
+                    createAudioPreview(file, previewSection);
+                    if (config.clearText) config.clearText.value = '';
+                } else {
+                    showError('Please drop an audio file', previewSection);
+                }
+            });
+        }
+
+        // Audio Preview Creation
+        function createAudioPreview(file, container) {
+            container.innerHTML = ''; // Clear existing preview
             const audio = document.createElement('audio');
             audio.controls = true;
             audio.src = URL.createObjectURL(file);
             audio.style.width = '100%';
-            previewSection.appendChild(audio);
-
-            // Remove any existing preview
-            const existingPreview = document.querySelector('.uploaded-preview');
-            if (existingPreview) {
-                existingPreview.remove();
-            }
-
-            // Delete text query when audio uploaded
-            document.getElementById('text-query').value = '';
-
-            // Insert after the search container but before results
-            const searchContainer = document.querySelector('.search-container');
-            searchContainer.insertAdjacentElement('afterend', previewSection);
+            container.appendChild(audio);
         }
 
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                updateUploadedAudio(file);
-            }
-        });
+        // Search Handling
+        async function handleSearch() {
+            const file = searchFileInput.files[0];
+            const text = textInput.value.trim();
+            const searchButton = document.querySelector('#search-drop-zone .search-button');
 
-        function handleSearch() {
-            const audioFile = document.getElementById('audio-query').files[0];
-            const textQuery = document.getElementById('text-query').value.trim();
-            const existingPreview = document.querySelector('.uploaded-preview audio');
-            
-            const formData = new FormData();
-            if (audioFile) {
-                formData.append('audio', audioFile);
-            } else if (existingPreview && existingPreview.src) {
-                // Convert the blob URL back to a file
-                fetch(existingPreview.src)
-                    .then(res => res.blob())
-                    .then(blob => {
-                        const file = new File([blob], 'audio-query', { type: 'audio/mpeg' });
-                        formData.append('audio', file);
-                        performSearchRequest(formData);
-                    });
-                return;
-            } else if (textQuery) {
-                formData.append('text', textQuery);
-                const existingPreview = document.querySelector('.uploaded-preview');
-                if (existingPreview) {
-                    existingPreview.remove();
-                }
-            } else {
-                alert('Please enter a text query or choose an audio file');
+            if (!file && !text) {
+                showError('Please enter a text query or choose an audio file', searchResults);
                 return;
             }
-            
-            performSearchRequest(formData);
-        }
 
-        function performSearchRequest(formData) {
-            const searchButton = document.querySelector('.search-button');
-            searchButton.innerHTML = 'Searching...';
-            
-            performSearch(formData).then(() => {
-                searchButton.textContent = 'Search';
-            }).catch(() => {
-                searchButton.textContent = 'Search';
-            });
-        }
+            const originalText = searchButton.textContent;
+            searchButton.textContent = 'Searching...';
 
-        // Perform search request
-        async function performSearch(formData) {
             try {
+                const formData = new FormData();
+                if (file) formData.append('audio', file);
+                if (text) formData.append('text', text);
+
                 const response = await fetch('/search', {
                     method: 'POST',
                     body: formData
                 });
 
+                const data = await response.json();
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(data.error || `HTTP error! status: ${response.status}`);
                 }
 
-                const data = await response.json();
-                displayResults(data.results);
+                displaySearchResults(data.results);
             } catch (error) {
                 console.error('Search error:', error);
-                showError('Search failed: ' + error.message);
+                showError(`Search failed: ${error.message}`, searchResults);
+            } finally {
+                searchButton.textContent = originalText;
             }
         }
 
-        // Display search results
-        function displayResults(results) {
-            resultsDiv.innerHTML = '';
+        // Caption Handling
+        async function handleCaption() {
+            const file = captionFileInput.files[0];
+            const captionButton = document.querySelector('#caption-drop-zone .search-button');
+
+            if (!file) {
+                showError('Please select an audio file', captionResults);
+                return;
+            }
+
+            const originalText = captionButton.textContent;
+            captionButton.textContent = 'Analyzing...';
+
+            try {
+                const formData = new FormData();
+                formData.append('audio', file);
+
+                const response = await fetch('/caption', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data || `HTTP error! status: ${response.status}`);
+                }
+
+                captionResults.innerHTML = `
+                    <div class="caption-result">
+                        <div class="caption-text">${data.caption}</div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Caption error:', error);
+                showError(`Caption error: ${error.message}`, captionResults);
+            } finally {
+                captionButton.textContent = originalText;
+            }
+        }
+
+        function displaySearchResults(results) {
+            searchResults.innerHTML = '';
             
             if (!results.length) {
-                resultsDiv.innerHTML = '<div class="no-results">No matching sounds found</div>';
+                searchResults.innerHTML = `
+                    <div class="caption-result">
+                        <div class="caption-text">No matching sounds found</div>
+                    </div>`;
                 return;
             }
 
@@ -426,7 +529,6 @@
                 resultItem.appendChild(audio);
                 resultItem.appendChild(pathSpan);
 
-                // Add alternate paths if they exist
                 if (altPaths && altPaths.length > 0) {
                     const altPathsDiv = document.createElement('div');
                     altPathsDiv.className = 'alt-paths';
@@ -439,19 +541,32 @@
                     resultItem.appendChild(altPathsDiv);
                 }
 
-                resultsDiv.appendChild(resultItem);
+                searchResults.appendChild(resultItem);
             });
         }
 
-        // Handle folder processing
+        // Error handling
+        function showError(message, targetElement) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'caption-result';
+            errorDiv.innerHTML = `<div class="caption-text">${message}</div>`;
+            
+            // Clear existing content
+            targetElement.innerHTML = '';
+            targetElement.appendChild(errorDiv);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                if (targetElement.contains(errorDiv)) {
+                    errorDiv.remove();
+                }
+            }, 5000);
+        }
+
         function handleFolderProcess() {
-            const folderPath = document.getElementById('folder-path').value.trim();
+            const folderPath = folderInput.value.trim();
             if (!folderPath) return;
 
-            const progressContainer = document.getElementById('progress-container');
-            const progressText = document.getElementById('progress-text');
-            const statusList = document.getElementById('status-list');
-            
             progressContainer.style.display = 'block';
             progressFill.style.width = '0%';
             progressText.textContent = 'Starting...';
@@ -466,19 +581,16 @@
                 const data = JSON.parse(event.data);
                 const currentTime = Date.now();
                 
-                // Store current count and timestamp
                 processedCounts.push({
                     count: data.current,
                     timestamp: currentTime
                 });
 
-                // Keep only last 30 seconds of data points
                 const thirtySecondsAgo = currentTime - 30000;
                 processedCounts = processedCounts.filter(p => p.timestamp >= thirtySecondsAgo);
 
-                // Calculate rate based on recent processing speed
                 const oldestPoint = processedCounts[0];
-                const timeSpan = (currentTime - oldestPoint.timestamp) / 1000; // in seconds
+                const timeSpan = (currentTime - oldestPoint.timestamp) / 1000;
                 const filesProcessed = data.current - oldestPoint.count;
                 const filesPerSecond = filesProcessed / timeSpan;
 
@@ -510,85 +622,20 @@
             };
         }
 
-        // Update progress display
-        function updateProgress(data) {
-            progressFill.style.width = `${data.progress}%`;
-            progressText.textContent = `Processing: ${data.current}/${data.total} files (${data.progress.toFixed(1)}%)`;
-            
-            const statusItem = document.createElement('div');
-            statusItem.className = `status-item status-${data.status.split(':')[0]}`;
-            
-            const statusText = document.createElement('span');
-            statusText.textContent = data.file;
-            
-            const statusLabel = document.createElement('span');
-            statusLabel.textContent = data.status;
-            statusLabel.className = 'status-label';
-            
-            statusItem.appendChild(statusText);
-            statusItem.appendChild(statusLabel);
-            statusList.insertBefore(statusItem, statusList.firstChild);
-            
-            if (data.current === data.total) {
-                progressText.textContent = 'Processing complete!';
-            }
-        }
+        // Initialize file uploads on load
+        setupFileUploads();
 
-        // Show error message
-        function showError(message) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error-message';
-            errorDiv.textContent = message;
-            
-            document.body.appendChild(errorDiv);
-            
-            setTimeout(() => {
-                errorDiv.remove();
-            }, 5000);
-        }
-
-        // Add event listeners
-        fileInput.addEventListener('change', updateFileName);
-        document.addEventListener('keypress', function(event) {
+        // Existing Enter key handler
+        document.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
                 const activeElement = document.activeElement;
-                const inputs = ['text-query', 'audio-query'];
-                if (inputs.includes(activeElement.id)) {
+                if (['text-query', 'audio-query'].includes(activeElement.id)) {
                     event.preventDefault();
                     handleSearch();
                 }
             }
         });
 
-        // Add these event listeners for drag and drop
-        const dropZone = document.getElementById('drop-zone');
-
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dropZone.style.border = '2px dashed var(--primary)';
-        });
-
-        dropZone.addEventListener('dragleave', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dropZone.style.border = 'none';
-        });
-
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dropZone.style.border = 'none';
-            
-            const file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('audio/')) {
-                fileInput.files = e.dataTransfer.files;
-                updateFileName();
-                updateUploadedAudio(file);
-            } else {
-                alert('Please drop an audio file');
-            }
-        });
     </script>
 </body>
 </html>
