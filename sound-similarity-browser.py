@@ -8,14 +8,45 @@ import librosa
 import json
 from typing import List, Dict, Tuple
 import tempfile
+import traceback
 
 class SoundSimilarityBrowser:
-    def __init__(self, cache_file: str = "embeddings_cache.jsonl"):
+    def __init__(self, cache_file: str = "embeddings_cache.jsonl", tags="tags.json"):
         self.model = laion_clap.CLAP_Module(enable_fusion=False)
         self.model.load_ckpt()
         self.cache_file = cache_file
         self.embeddings_cache: Dict[str, List[float]] = {}
         self.load_cache()
+        
+        if isinstance(tags, str):
+            self.tags = self.load_tags(file_path=tags)
+        elif isinstance(tags, list):
+            self.tags = list(set(tags))
+        else:
+            raise ValueError("Tags must be a file path (str) or a list of tags (list).")
+        
+        self.tag_embeddings_array = None
+        self.tag_to_index = {}
+        self._initialize_tag_embeddings()
+
+    def load_tags(self, file_path='tags.json'):
+        with open(file_path, 'r') as file:
+            tags_data = json.load(file)
+            tags = sum(tags_data.values(), [])
+        return list(set(tags))
+
+    def _initialize_tag_embeddings(self):
+        """Initialize embeddings for all tags."""
+        print("Computing tag embeddings...")
+        embeddings = []
+        
+        for idx, tag in enumerate(self.tags):
+            self.tag_to_index[tag] = idx
+            embedding = self.model.get_text_embedding([tag], use_tensor=True)
+            embeddings.append(embedding.squeeze(0).detach().cpu().numpy())
+        
+        self.tag_embeddings_array = np.stack(embeddings)
+        print(f"Computed embeddings for {len(self.tags)} tags")
 
     def load_cache(self):
         """Load cache from JSONL file"""
@@ -106,6 +137,33 @@ class SoundSimilarityBrowser:
             use_tensor=True
         )
         return embedding.detach().cpu().numpy()
+    
+    def get_tag_embedding(self, tag: str) -> np.ndarray:
+        """Get the embedding for a specific tag."""
+        if tag not in self.tag_to_index:
+            raise ValueError(f"Tag '{tag}' not found in known tags.")
+        idx = self.tag_to_index[tag]
+        return self.tag_embeddings_array[idx]
+    
+    def tag(self, audio_path: str, top_n: int = 10) -> List[Tuple[str, float]]:
+        """Get top N most relevant tags for an audio file with their confidence scores."""
+        # Get audio embedding
+        embedding = self.model.get_audio_embedding_from_filelist(
+            x=[str(audio_path)], 
+            use_tensor=True
+        ).squeeze(0).detach().cpu().numpy()
+        
+        # Compute similarities using numpy operations
+        dot_product = np.dot(self.tag_embeddings_array, embedding)
+        embedding_norm = np.linalg.norm(embedding)
+        tag_norms = np.linalg.norm(self.tag_embeddings_array, axis=1)
+        similarities = dot_product / (tag_norms * embedding_norm)
+        
+        # Get top N indices
+        top_indices = np.argsort(similarities)[-top_n:][::-1]
+        
+        # Map indices back to tags using the index in self.tags
+        return [(self.tags[i], float(similarities[i])) for i in top_indices]
 
 # Flask Application
 app = Flask(__name__)
@@ -156,10 +214,27 @@ def search():
         os.unlink(temp_audio.name)
 
     similar_sounds = browser.find_similar(query_embedding)
-    # Unpack the new format with alt_paths
     results = [(os.path.abspath(path), similarity, alt_paths) 
               for path, similarity, alt_paths in similar_sounds]
     return jsonify({'results': results})
+
+
+@app.route('/caption', methods=['POST'])
+def caption():
+    if 'audio' not in request.files:
+        return jsonify({'error': 'No audio file uploaded'}), 400
+    
+    audio_file = request.files['audio']
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_audio:
+        audio_file.save(temp_audio.name)
+        try:
+            tags = browser.tag(temp_audio.name)
+            captions = ", ".join([tag for (tag, confidence) in tags])
+            print(captions)
+        except Exception as e:
+            return f"Error captioning:\n{traceback.format_exc()}"
+        return jsonify({'caption': captions})
+    os.unlink(temp_audio.name)
 
 if __name__ == '__main__':
     app.run(debug=True)
